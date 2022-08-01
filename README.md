@@ -1,5 +1,55 @@
 # Kubernetes NFS Subdir External Provisioner
 
+## tmax-master branch Info
+### 버전 및 변경 사항
+- kubernetes-sigs/nfs-subdir-external-provisioner:v4.0.2 기반
+- log module을 glog에서 klog/v2로 변경
+- 내부에서 사용하는 controller pkg 버전 변경 v6.0.0 (glog 사용)-> v8.0.0 (klog/v2 사용)
+  - "sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller
+### image 주소
+- tmaxcloudck/nfs-subdir-external-provisioner:v4.0.2
+- 배포 방법은 다음 링크 참고
+  - https://github.com/tmax-cloud/hypersds-wiki/blob/main/nfs/provisioner/README.md
+  - deployment.yaml의 container image를 다음 이미지로 변경
+    ```yaml
+        spec:
+          containers:
+            ...
+            image: tmaxcloudck/nfs-subdir-external-provisioner:v4.0.2
+    ```
+### 로그 설정
+- klog에서 log level에 관여할 수 있는 option은 다음과 같음
+  - --v : verbosity 레벨 설정 (0~5)
+  - --logtostderr : 모든 로그(fatal, error, warning, info)를 standard error로 출력 여부 (true, false), verbosity 로그는 --v={num}를 통해 설정된 값 이하 레벨의 로그만 standard error로 출력
+  - --stderrthreshold : logtostderr=false일 때, stderrthreshold 를 통해 standard error로 보낼 로그 레벨 설정 가능 (stderrthreshold=INFO|WARNING|ERROR|FATAL, default는 ERROR)
+- 로그 레벨은 fatal, error, warning, info, verbosity(--v) 1-5단계로 구성, --v=0 단계에서는 fatal, warning, error, info 출력
+  - default는 --v=0, --logtostderr=true, stderrthreshold=ERROR
+- 로그 설정 예시
+  - fatal, error만 출력하게 log 설정
+    - deployment.yaml or 배포한 nfs-subdir-external-provisioner deployment edit
+    ```yaml
+    ...
+        spec:
+          containers:
+          - args:
+            - --logtostderr=false
+        env:
+        ...
+    ```
+  - verbosity 설정
+    - deployment.yaml or 배포한 nfs-subdir-external-provisioner deployment edit
+    ```yaml
+    ...
+        spec:
+          containers:
+          - args:
+            - --v=5 # verbosity level 설정
+        env:
+        ...
+    ```
+  
+---
+
 **NFS subdir external provisioner** is an automatic provisioner that use your _existing and already configured_ NFS server to support dynamic provisioning of Kubernetes Persistent Volumes via Persistent Volume Claims. Persistent volumes are provisioned as `${namespace}-${pvcName}-${pvName}`.
 
 Note: This repository is migrated from https://github.com/kubernetes-incubator/external-storage/tree/master/nfs-client. As part of the migration:

@@ -27,8 +27,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang/glog"
 	v1 "k8s.io/api/core/v1"
+	klog "k8s.io/klog/v2"
 
 	storage "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +36,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/apis/core/v1/helper"
-	"sigs.k8s.io/sig-storage-lib-external-provisioner/v6/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/v8/controller"
 )
 
 const (
@@ -82,7 +82,7 @@ func (p *nfsProvisioner) Provision(ctx context.Context, options controller.Provi
 	if options.PVC.Spec.Selector != nil {
 		return nil, controller.ProvisioningFinished, fmt.Errorf("claim Selector is not supported")
 	}
-	glog.V(4).Infof("nfs provisioner: VolumeOptions %v", options)
+	klog.V(4).Infof("nfs provisioner: VolumeOptions %v", options)
 
 	pvcNamespace := options.PVC.Namespace
 	pvcName := options.PVC.Name
@@ -108,7 +108,7 @@ func (p *nfsProvisioner) Provision(ctx context.Context, options controller.Provi
 		fullPath = filepath.Join(mountPath, customPath)
 	}
 
-	glog.V(4).Infof("creating path %s", fullPath)
+	klog.V(4).Infof("creating path %s", fullPath)
 	if err := os.MkdirAll(fullPath, 0777); err != nil {
 		return nil, controller.ProvisioningFinished, errors.New("unable to create directory to provision new pv: " + err.Error())
 	}
@@ -143,7 +143,7 @@ func (p *nfsProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	oldPath := filepath.Join(mountPath, basePath)
 
 	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
-		glog.Warningf("path %s does not exist, deletion skipped", oldPath)
+		klog.Warningf("path %s does not exist, deletion skipped", oldPath)
 		return nil
 	}
 	// Get the storage class for this volume.
@@ -180,7 +180,7 @@ func (p *nfsProvisioner) Delete(ctx context.Context, volume *v1.PersistentVolume
 	}
 
 	archivePath := filepath.Join(mountPath, "archived-"+basePath)
-	glog.V(4).Infof("archiving path %s to %s", oldPath, archivePath)
+	klog.V(4).Infof("archiving path %s to %s", oldPath, archivePath)
 	return os.Rename(oldPath, archivePath)
 }
 
@@ -201,20 +201,21 @@ func (p *nfsProvisioner) getClassForVolume(ctx context.Context, pv *v1.Persisten
 }
 
 func main() {
-	flag.Parse()
+	klog.InitFlags(nil)
 	flag.Set("logtostderr", "true")
+	flag.Parse()
 
 	server := os.Getenv("NFS_SERVER")
 	if server == "" {
-		glog.Fatal("NFS_SERVER not set")
+		klog.Fatal("NFS_SERVER not set")
 	}
 	path := os.Getenv("NFS_PATH")
 	if path == "" {
-		glog.Fatal("NFS_PATH not set")
+		klog.Fatal("NFS_PATH not set")
 	}
 	provisionerName := os.Getenv(provisionerNameKey)
 	if provisionerName == "" {
-		glog.Fatalf("environment variable %s is not set! Please set it.", provisionerNameKey)
+		klog.Fatalf("environment variable %s is not set! Please set it.", provisionerNameKey)
 	}
 	kubeconfig := os.Getenv("KUBECONFIG")
 	var config *rest.Config
@@ -224,7 +225,7 @@ func main() {
 		var err error
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 		if err != nil {
-			glog.Fatalf("Failed to create kubeconfig: %v", err)
+			klog.Fatalf("Failed to create kubeconfig: %v", err)
 		}
 	} else {
 		// Create an InClusterConfig and use it to create a client for the controller
@@ -232,19 +233,12 @@ func main() {
 		var err error
 		config, err = rest.InClusterConfig()
 		if err != nil {
-			glog.Fatalf("Failed to create config: %v", err)
+			klog.Fatalf("Failed to create config: %v", err)
 		}
 	}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		glog.Fatalf("Failed to create client: %v", err)
-	}
-
-	// The controller needs to know what the server version is because out-of-tree
-	// provisioners aren't officially supported until 1.5
-	serverVersion, err := clientset.Discovery().ServerVersion()
-	if err != nil {
-		glog.Fatalf("Error getting server version: %v", err)
+		klog.Fatalf("Failed to create client: %v", err)
 	}
 
 	leaderElection := true
@@ -252,7 +246,7 @@ func main() {
 	if leaderElectionEnv != "" {
 		leaderElection, err = strconv.ParseBool(leaderElectionEnv)
 		if err != nil {
-			glog.Fatalf("Unable to parse ENABLE_LEADER_ELECTION env var: %v", err)
+			klog.Fatalf("Unable to parse ENABLE_LEADER_ELECTION env var: %v", err)
 		}
 	}
 
@@ -266,7 +260,6 @@ func main() {
 	pc := controller.NewProvisionController(clientset,
 		provisionerName,
 		clientNFSProvisioner,
-		serverVersion.GitVersion,
 		controller.LeaderElection(leaderElection),
 	)
 	// Never stops.
